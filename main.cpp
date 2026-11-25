@@ -1,172 +1,172 @@
-#include <cmath> 
 #include <iostream>
-#include <stdexcept> 
-#include <vector>
+#include <string>
 
-using namespace std;
+namespace maths {
 
-typedef float term_t;
-typedef unsigned int exp_t;
+namespace core {
+
+using term_t = float;
+using exp_t = unsigned int;
+
+inline term_t power(term_t base, exp_t exp) {
+  term_t result = 1.0f;
+  for (exp_t i = 0; i < exp; ++i)
+    result *= base;
+  return result;
+}
 
 template <int N> class Expression {
 public:
-  virtual term_t solve(term_t val[N]) = 0;
-  virtual void differentiate(Expression<N> &exp, exp_t mask[N]) = 0;
-  virtual string toString() = 0;
+  virtual ~Expression() = default;
+  virtual term_t solve(const term_t vals[N]) const = 0;
+  virtual void differentiate(Expression<N> &out, const exp_t mask[N]) const = 0;
+  virtual std::string toString() const = 0;
 };
 
-term_t power(term_t base, exp_t exp) {
-  if (exp == 0)
-    return 1.0f;
-
-  for (exp_t i = 0; i < exp; ++i) {
-    base *= base;
-  }
-
-  return base;
 }
+
+namespace poly {
+
+using core::exp_t;
+using core::Expression;
+using core::term_t;
 
 template <int N> class Monomial : public Expression<N> {
 protected:
   term_t coeff;
   exp_t exps[N];
 
-  constexpr static exp_t null_exps[N] = {0};
-
 public:
   Monomial() { nullify(); }
-  Monomial(term_t coeff) : coeff(coeff) { setExponents(null_exps); }
-  Monomial(term_t coeff, const exp_t exps[N]) : coeff(coeff) {
-    setExponents(exps);
+  explicit Monomial(term_t coeff) : coeff(coeff) {
+    for (int i = 0; i < N; ++i) exps[i] = 0;
   }
-  term_t getCoeff() { return coeff; }
-  void getExponents(exp_t exps[N]) {
-    for (int i = 0; i < N; ++i) {
-      exps[i] = this->exps[i];
-    }
+  Monomial(term_t coeff, const exp_t exps[N]) : coeff(coeff) { setExponents(exps); }
+
+  term_t getCoeff() const { return coeff; }
+  void getExponents(exp_t out[N]) const {
+    for (int i = 0; i < N; ++i) out[i] = exps[i];
   }
   void nullify() {
     coeff = 0.0f;
-    for (int i = 0; i < N; ++i) {
-      exps[i] = 0;
-    }
+    for (int i = 0; i < N; ++i) exps[i] = 0;
   }
-  void setExponents(const exp_t exps[N]) {
-    for (int i = 0; i < N; ++i) {
-      this->exps[i] = exps[i];
-    }
+  void setExponents(const exp_t e[N]) {
+    for (int i = 0; i < N; ++i) exps[i] = e[i];
   }
-  void differentiate(Expression<N> &exp, exp_t mask[N]) override {
-    differentiate(dynamic_cast<Monomial<N> &>(exp), mask);
-  }
-  void differentiate(Monomial<N> &deriv, exp_t mask[N]) {
-    bool isConstant = 1;
 
-    deriv = *this;
-    for (int i = 0; i < N; ++i) {
-      if (mask[i] * exps[i] != 0) {
-        deriv.coeff *= exps[i];
-        deriv.exps[i] -= 1;
-
-        isConstant &= 0;
-      }
-    }
-    if (isConstant)
-      deriv.nullify();
+  void differentiate(Expression<N> &out, const exp_t mask[N]) const override {
+    differentiate(dynamic_cast<Monomial<N> &>(out), mask);
   }
-  term_t solve(term_t vals[N]) override {
+  void differentiate(Monomial<N> &deriv, const exp_t mask[N]) const {
+    deriv.coeff = coeff;
+    deriv.setExponents(exps);
+    bool derived = false;
+    for (int i = 0; i < N; ++i) {
+      if (mask[i] == 0) continue;
+      if (exps[i] == 0) { deriv.nullify(); return; }
+      deriv.coeff *= exps[i];
+      deriv.exps[i] -= 1;
+      derived = true;
+    }
+    if (!derived) deriv.nullify();
+  }
+
+  term_t solve(const term_t vals[N]) const override {
     term_t result = coeff;
-
-    for (int i = 0; i < N; ++i) {
-      result *= power(vals[i], exps[i]);
-    }
-    return result;
-  };
-  virtual string toString() override {
-    string result = to_string(coeff);
-    for (int i = 0; i < N; ++i) {
-      if (exps[i] != 0)
-        result += "x_" + to_string(i + 1) + "^" + to_string(exps[i]);
-    }
+    for (int i = 0; i < N; ++i) result *= core::power(vals[i], exps[i]);
     return result;
   }
-};
 
-const int N = 1;
-class Monomial1D : public Monomial<N> {
-public:
-  Monomial1D() : Monomial() {}
-  // this could be a constant
-  Monomial1D(term_t coeff) : Monomial(coeff) {}
-  Monomial1D(term_t coeff, const exp_t exps[N]) : Monomial(coeff, exps) {}
+  std::string toString() const override {
+    std::string result = std::to_string(coeff);
+    for (int i = 0; i < N; ++i)
+      if (exps[i] != 0)
+        result += "x_" + std::to_string(i + 1) + "^" + std::to_string(exps[i]);
+    return result;
+  }
 };
 
 template <int N, int M> class Polynomial : public Expression<N> {
 protected:
   Monomial<N> *terms[M];
 
+  Polynomial() = default;
+
 public:
-  Polynomial(Monomial<N> *terms[M]) {
-    for (int i = 0; i < M; ++i) {
-      this->terms[i] = terms[i];
-    }
+  explicit Polynomial(Monomial<N> *const t[M]) {
+    for (int i = 0; i < M; ++i) terms[i] = t[i];
   }
-  term_t solve(term_t vals[N]) override {
+
+  term_t solve(const term_t vals[N]) const override {
     term_t result = 0.0f;
-
-    for (int i = 0; i < M; i++) {
-      result += terms[i]->solve(vals);
-    }
+    for (int i = 0; i < M; ++i) result += terms[i]->solve(vals);
     return result;
   }
-  void differentiate(Expression<N> &exp, exp_t mask[N]) override {
-    differentiate(dynamic_cast<Polynomial<N, M> &>(exp), mask);
+
+  void differentiate(Expression<N> &out, const exp_t mask[N]) const override {
+    differentiate(dynamic_cast<Polynomial<N, M> &>(out), mask);
   }
-  void differentiate(Polynomial<N, M> &deriv, exp_t mask[N]) {
+  void differentiate(Polynomial<N, M> &deriv, const exp_t mask[N]) const {
+    for (int i = 0; i < M; ++i) terms[i]->differentiate(*deriv.terms[i], mask);
+  }
+
+  std::string toString() const override {
+    std::string result;
     for (int i = 0; i < M; ++i) {
-      terms[i]->differentiate(*deriv.terms[i], mask);
-    }
-  }
-  string toString() override {
-    string result = "";
-
-    if (M > 0) {
-      for (int i = 0; i < (M - 1); ++i) {
-        result += terms[i]->toString();
-        if (terms[i]->getCoeff() >= 0) {
-          result += "+";
-        }
-      }
-      result += terms[M - 1]->toString();
+      if (i > 0 && terms[i]->getCoeff() >= 0) result += "+";
+      result += terms[i]->toString();
     }
     return result;
   }
 };
 
-template <int M> class Polynomial1D : public Polynomial<1, M> {
+namespace uni {
+
+constexpr int DIM = 1;
+
+class Monomial1D : public Monomial<DIM> {
 public:
-  Polynomial1D(Monomial1D *mons[M]) : Polynomial<1, M>((Monomial<1> **)mons) {}
+  using Monomial<DIM>::Monomial;
 };
+
+template <int M> class Polynomial1D : public Polynomial<DIM, M> {
+public:
+  explicit Polynomial1D(Monomial1D *const mons[M]) {
+    for (int i = 0; i < M; ++i)
+      this->terms[i] = mons[i];
+  }
+};
+
+} // namespace uni
+} // namespace poly
+} // namespace maths
 
 int main() {
+  using namespace maths::poly::uni; 
+  using maths::core::exp_t;
+  using maths::core::term_t;
+
   term_t vals[1] = {3.0f};
   const exp_t exps[1] = {2u};
-  exp_t mask[1] = {1u};
+  const exp_t mask[1] = {1u};
 
-  Monomial1D m1(12.4f, exps), m2(18.f, exps), dm3, *ms[2] = {&m1, &m2}, m4, m5;
-  Monomial1D *ms1[2] = {&m4, &m5};
-  
-  m1.differentiate(dm3, mask);
-  cout << dm3.toString() << endl;
+  Monomial1D m1(12.4f, exps), m2(-18.f, exps), dm1;
+  Monomial1D *ms[2] = {&m1, &m2};
+  Monomial1D d1, d2, e1, e2;
+  Monomial1D *dms[2] = {&d1, &d2}, *ems[2] = {&e1, &e2};
 
-  Polynomial1D<2> p1(ms), p1p(ms1), p2p(ms1);
-  p1.differentiate(p1p, mask);
-  cout << p1.toString() << endl;
-  cout << p1p.toString() << endl;
+  m1.differentiate(dm1, mask);
+  std::cout << "m1'      = " << dm1.toString() << '\n';
 
-  Expression<1> *exp = &p1;
-  exp->differentiate(p2p, mask);
-  cout << p2p.toString() << endl;
+  Polynomial1D<2> p(ms), dp(dms), dp2(ems);
+  p.differentiate(dp, mask);
+  std::cout << "p        = " << p.toString() << '\n';
+  std::cout << "p(3)     = " << p.solve(vals) << '\n';
+  std::cout << "p'       = " << dp.toString() << '\n';
 
+  maths::core::Expression<1> *e = &p;
+  e->differentiate(dp2, mask);
+  std::cout << "p' (via Expression) = " << dp2.toString() << '\n';
   return 0;
 }

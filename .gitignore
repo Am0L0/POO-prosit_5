@@ -66,3 +66,8 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Exécutables générés par Makefile
+main
+main-debug
+exec
